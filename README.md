@@ -4,9 +4,9 @@
 <!--Remove the below lines and add yours -->
 A short description about the script must be mentioned here.
 
-# Script Title
+### How to run the script
 <!--Remove the below lines and add yours -->
-A short description about the script must be mentioned here.
+Steps on how to run the script along with suitable examples.
 
 ### Screenshot/GIF showing the sample use of the script
 <!--Remove the below lines and add yours -->
