@@ -1,0 +1,190 @@
+import tkinter as tk
+from tkinter import messagebox
+import random
+import time
+import difflib
+
+SENTENCES = [
+    "The quick brown fox jumps over the lazy dog.",
+    "Typing fast is a useful skill that improves with practice.",
+    "Cloud security requires careful planning and strong identity controls.",
+    "Infrastructure as code helps teams deploy consistently and securely.",
+    "Practice each day and you will notice steady improvement in accuracy."
+]
+
+def words_count(text: str) -> int:
+    return len([w for w in text.strip().split() if w])
+
+def normalize(s: str) -> str:
+    # Basic normalization for fairer accuracy scoring
+    return " ".join(s.strip().split())
+
+class TypingSpeedApp:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("Typing Speed Test")
+        self.root.geometry("800x520")
+        self.root.minsize(760, 500)
+
+        self.start_time = None
+        self.running = False
+        self.current_prompt = ""
+        self.timer_job = None
+        self.max_seconds = 60  # change to 30/60/120 if desired
+
+        self._build_ui()
+        self.new_test()
+
+    def _build_ui(self):
+        top = tk.Frame(self.root, padx=12, pady=12)
+        top.pack(fill="x")
+
+        title = tk.Label(top, text="Typing Speed Test", font=("Segoe UI", 18, "bold"))
+        title.pack(anchor="w")
+
+        info = tk.Frame(top)
+        info.pack(fill="x", pady=(8, 0))
+
+        self.timer_label = tk.Label(info, text="Time: 0.0s", font=("Segoe UI", 11))
+        self.timer_label.pack(side="left")
+
+        self.wpm_label = tk.Label(info, text="WPM: —", font=("Segoe UI", 11))
+        self.wpm_label.pack(side="left", padx=(16, 0))
+
+        self.acc_label = tk.Label(info, text="Accuracy: —", font=("Segoe UI", 11))
+        self.acc_label.pack(side="left", padx=(16, 0))
+
+        btns = tk.Frame(info)
+        btns.pack(side="right")
+
+        self.new_btn = tk.Button(btns, text="New Prompt", command=self.new_test)
+        self.new_btn.pack(side="left", padx=6)
+
+        self.submit_btn = tk.Button(btns, text="Submit", command=self.submit)
+        self.submit_btn.pack(side="left", padx=6)
+
+        self.reset_btn = tk.Button(btns, text="Reset", command=self.reset_input)
+        self.reset_btn.pack(side="left", padx=6)
+
+        mid = tk.Frame(self.root, padx=12, pady=12)
+        mid.pack(fill="both", expand=True)
+
+        tk.Label(mid, text="Type the text below:", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+
+        self.prompt_box = tk.Text(mid, height=4, wrap="word", font=("Consolas", 14), padx=10, pady=10)
+        self.prompt_box.pack(fill="x", pady=(6, 14))
+        self.prompt_box.configure(state="disabled")
+
+        tk.Label(mid, text="Start typing here (timer starts on first keystroke):", font=("Segoe UI", 11)).pack(anchor="w")
+
+        self.input_box = tk.Text(mid, height=8, wrap="word", font=("Consolas", 14), padx=10, pady=10)
+        self.input_box.pack(fill="both", expand=True, pady=(6, 0))
+
+        self.input_box.bind("<KeyPress>", self._on_keypress)
+
+        bottom = tk.Frame(self.root, padx=12, pady=10)
+        bottom.pack(fill="x")
+
+        self.status = tk.Label(bottom, text="Tip: Press Submit when you're done.", anchor="w")
+        self.status.pack(fill="x")
+
+    def set_prompt(self, text: str):
+        self.prompt_box.configure(state="normal")
+        self.prompt_box.delete("1.0", "end")
+        self.prompt_box.insert("1.0", text)
+        self.prompt_box.configure(state="disabled")
+
+    def new_test(self):
+        self.stop_timer()
+        self.current_prompt = random.choice(SENTENCES)
+        self.set_prompt(self.current_prompt)
+        self.reset_input()
+        self.status.config(text=f"Prompt loaded. You have up to {self.max_seconds} seconds.")
+
+    def reset_input(self):
+        self.stop_timer()
+        self.input_box.delete("1.0", "end")
+        self.input_box.focus_set()
+        self.timer_label.config(text="Time: 0.0s")
+        self.wpm_label.config(text="WPM: —")
+        self.acc_label.config(text="Accuracy: —")
+
+    def _on_keypress(self, event):
+        # Start timing on first character typed (ignore modifier keys)
+        if not self.running and event.keysym not in ("Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R"):
+            self.start_timer()
+
+    def start_timer(self):
+        self.start_time = time.perf_counter()
+        self.running = True
+        self._tick()
+
+    def stop_timer(self):
+        self.running = False
+        if self.timer_job is not None:
+            self.root.after_cancel(self.timer_job)
+            self.timer_job = None
+
+    def _tick(self):
+        if not self.running:
+            return
+        elapsed = time.perf_counter() - self.start_time
+        self.timer_label.config(text=f"Time: {elapsed:.1f}s")
+
+        # Optional: live WPM estimate
+        typed = normalize(self.input_box.get("1.0", "end-1c"))
+        wc = words_count(typed)
+        minutes = max(elapsed / 60.0, 1e-9)
+        live_wpm = wc / minutes
+        self.wpm_label.config(text=f"WPM: {live_wpm:.1f}")
+
+        if elapsed >= self.max_seconds:
+            self.submit(auto=True)
+            return
+
+        self.timer_job = self.root.after(100, self._tick)
+
+    def accuracy_percent(self, reference: str, typed: str) -> float:
+        ref = normalize(reference)
+        t = normalize(typed)
+        if not ref and not t:
+            return 100.0
+        if not ref:
+            return 0.0
+        # Character-level similarity ratio
+        ratio = difflib.SequenceMatcher(a=ref, b=t).ratio()
+        return ratio * 100.0
+
+    def submit(self, auto: bool = False):
+        if not self.running and normalize(self.input_box.get("1.0", "end-1c")) == "":
+            messagebox.showinfo("Typing Speed Test", "Start typing first!")
+            return
+
+        elapsed = 0.0
+        if self.start_time is not None:
+            elapsed = time.perf_counter() - self.start_time
+
+        self.stop_timer()
+
+        typed = self.input_box.get("1.0", "end-1c")
+        wc = words_count(typed)
+        minutes = max(elapsed / 60.0, 1e-9)
+        wpm = wc / minutes if elapsed > 0 else 0.0
+
+        acc = self.accuracy_percent(self.current_prompt, typed)
+        self.acc_label.config(text=f"Accuracy: {acc:.1f}%")
+        self.wpm_label.config(text=f"WPM: {wpm:.1f}")
+        self.timer_label.config(text=f"Time: {elapsed:.1f}s")
+
+        outcome = "Time's up! " if auto else ""
+        self.status.config(text=f"{outcome}WPM {wpm:.1f} • Accuracy {acc:.1f}% • Words {wc} • Time {elapsed:.1f}s")
+
+        messagebox.showinfo(
+            "Results",
+            f"{outcome}\nWPM: {wpm:.1f}\nAccuracy: {acc:.1f}%\nWords typed: {wc}\nTime: {elapsed:.1f}s"
+        )
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = TypingSpeedApp(root)
+    root.mainloop()
